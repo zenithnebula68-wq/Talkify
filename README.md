@@ -106,12 +106,7 @@ Building this project provided deep hands-on experience in several complex domai
 
 ## 🔮 Future Enhancements
 
-- [ ] **Group Chats**: Extend E2EE architecture using the Signal Protocol (Sender Keys) or by individually encrypting payloads for each group member.
-- [ ] **Push Notifications**: Integrate service workers and Web Push API to alert users of messages when the app is running in the background.
-- [ ] **Media & Attachments**: Apply client-side encryption to files (images, PDFs) before uploading them to an S3-compatible cloud storage bucket.
-- [ ] **Offline Mode**: Implement local PouchDB/IndexedDB synchronization so users can view parsed chat histories even without an active internet connection.
-
----
-
-## � License
-This project is open-source and available under the MIT License.
+- **Group Chats**: Extend E2EE architecture using the Signal Protocol (Sender Keys) or by individually encrypting payloads for each group member.
+- **Push Notifications**: Integrate service workers and Web Push API to alert users of messages when the app is running in the background.
+- **Media & Attachments**: Apply client-side encryption to files (images, PDFs) before uploading them to an S3-compatible cloud storage bucket.
+- **Offline Mode**: Implement local PouchDB/IndexedDB synchronization so users can view parsed chat histories even without an active internet connection.

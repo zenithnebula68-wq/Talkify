@@ -36,7 +36,7 @@ public class ChatController {
         try {
             sender = userService.getUserByUsername(request.getSenderUsername());
         } catch (Exception e) {
-            log.error("Sender not found for message: {}", request.getSenderUsername());
+            log.error("Error finding sender '{}': {}", request.getSenderUsername(), e.getMessage(), e);
             return;
         }
         ChatRoom chatRoom = null;
@@ -64,7 +64,7 @@ public class ChatController {
                 .build();
 
         // Save the chat message in the DB
-        chatMessageService.save(chatMessage);
+        chatMessage = chatMessageService.save(chatMessage);
 
         if (chatRoom != null) {
             // Provide to a specific chat room topic
@@ -87,7 +87,7 @@ public class ChatController {
         try {
             user = userService.getUserByUsername(request.getSenderUsername());
         } catch (Exception e) {
-            log.error("User not found for addUser: {}", request.getSenderUsername());
+            log.error("Error finding user '{}': {}", request.getSenderUsername(), e.getMessage(), e);
             return null;
         }
         userService.connect(user);
@@ -116,7 +116,7 @@ public class ChatController {
                 .build();
 
         // Save the JOIN message in the DB
-        chatMessageService.save(chatMessage);
+        chatMessage = chatMessageService.save(chatMessage);
 
         return chatMessage;
     }

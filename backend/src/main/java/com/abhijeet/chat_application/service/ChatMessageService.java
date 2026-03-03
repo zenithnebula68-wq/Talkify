@@ -8,6 +8,8 @@ import com.abhijeet.chat_application.repository.ChatRoomRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.CacheManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -20,6 +22,7 @@ public class ChatMessageService {
 
     private final ChatMessageRepository chatMessageRepository;
     private final ChatRoomRepository chatRoomRepository;
+    private final CacheManager cacheManager;
 
     @Transactional
     public ChatMessage save(ChatMessage chatMessage) {
@@ -28,6 +31,14 @@ public class ChatMessageService {
             room.setLastMessage(chatMessage.getContent());
             room.setLastMessageTimestamp(chatMessage.getTimestamp());
             chatRoomRepository.save(room);
+
+            // Invalidate user_chat_rooms cache for all participants
+            var cache = cacheManager.getCache("user_chat_rooms");
+            if (cache != null) {
+                for (User participant : room.getParticipants()) {
+                    cache.evict(participant.getUsername());
+                }
+            }
         }
         return chatMessageRepository.save(chatMessage);
     }
@@ -39,8 +50,9 @@ public class ChatMessageService {
         } else {
             messages = chatMessageRepository.findTop50ByChatRoomIsNullOrderByTimestampDesc();
         }
-        Collections.reverse(messages);
-        return messages;
+        List<ChatMessage> modifiableMessages = new ArrayList<>(messages);
+        Collections.reverse(modifiableMessages);
+        return modifiableMessages;
     }
 
     @Transactional
@@ -88,6 +100,7 @@ public class ChatMessageService {
         return counts;
     }
 
+    @Cacheable(value = "user_chat_rooms", key = "#username")
     public java.util.Map<String, String> getLastMessages(String username) {
         List<ChatRoom> activeRooms = chatRoomRepository.findByParticipantsUsername(username);
         java.util.Map<String, String> lastMessages = new java.util.HashMap<>();

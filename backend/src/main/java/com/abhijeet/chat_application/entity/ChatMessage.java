@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
         @Index(name = "idx_chat_timestamp", columnList = "chat_room_id, timestamp"),
         @Index(name = "idx_sender_status", columnList = "sender_id, status")
 })
-public class ChatMessage {
+public class ChatMessage implements java.io.Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

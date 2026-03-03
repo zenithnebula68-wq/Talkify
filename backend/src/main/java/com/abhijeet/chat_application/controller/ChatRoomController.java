@@ -25,8 +25,14 @@ public class ChatRoomController {
             return ResponseEntity.badRequest().build();
         }
 
-        User u1 = userService.getOrCreateUser(user1);
-        User u2 = userService.getOrCreateUser(user2);
+        User u1;
+        User u2;
+        try {
+            u1 = userService.getUserByUsername(user1);
+            u2 = userService.getUserByUsername(user2);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().build();
+        }
 
         // Find existing 1on1 room
         List<ChatRoom> roomsWithU1 = chatRoomRepository.findByParticipantsContaining(u1);

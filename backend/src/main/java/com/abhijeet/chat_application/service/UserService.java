@@ -13,15 +13,9 @@ public class UserService {
 
     private final UserRepository userRepository;
 
-    public User getOrCreateUser(String username) {
-        return userRepository.findByUsername(username).orElseGet(() -> {
-            User newUser = User.builder()
-                    .username(username)
-                    .fullName(username)
-                    .isOnline(true)
-                    .build();
-            return userRepository.save(newUser);
-        });
+    public User getUserByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found with username: " + username));
     }
 
     public void disconnect(User user) {

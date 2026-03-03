@@ -205,10 +205,15 @@ const ChatApp = () => {
   const currentSubscriptionRef = useRef(null);
   const sharedKeysCache = useRef({});
   const usersRef = useRef([]);
+  const activeChatRef = useRef(null);
 
   useEffect(() => {
     usersRef.current = users;
   }, [users]);
+
+  useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
 
   // Auto-scroll to bottom of messages
   const scrollToBottom = () => {
@@ -219,19 +224,20 @@ const ChatApp = () => {
     scrollToBottom();
   }, [messages]);
 
-  const authHeaders = {
-    'Authorization': `Bearer ${token}`
-  };
+  const getAuthHeaders = () => ({
+    'Authorization': `Bearer ${localStorage.getItem('chatToken')}`
+  });
 
   const fetchUsersAndUpdateRef = async () => {
     try {
-      const resUsers = await fetch('/api/users', { headers: authHeaders });
+      const resUsers = await fetch('/api/users', { headers: getAuthHeaders() });
       if (resUsers.status === 401 || resUsers.status === 403) {
         handleDisconnect();
         throw new Error("Unauthorized");
       }
       if (!resUsers.ok) return [];
-      const newUsers = (await resUsers.json()).filter(u => u.username !== username);
+      const currentUser = username || localStorage.getItem('chatUsername');
+      const newUsers = (await resUsers.json()).filter(u => u.username !== currentUser);
       setUsers(newUsers);
       usersRef.current = newUsers;
       return newUsers;
@@ -257,7 +263,7 @@ const ChatApp = () => {
       const newUsers = await fetchUsersAndUpdateRef();
       if (!newUsers || newUsers.length === 0 && !isConnected) return; // Disconnected or failed
 
-      const resCounts = await fetch(`/api/messages/unread-counts?username=${encodeURIComponent(username)}`, { headers: authHeaders });
+      const resCounts = await fetch(`/api/messages/unread-counts?username=${encodeURIComponent(username || localStorage.getItem('chatUsername'))}`, { headers: getAuthHeaders() });
       if (resCounts.status === 401 || resCounts.status === 403) return handleDisconnect();
 
       let parsedCounts = {};
@@ -266,7 +272,7 @@ const ChatApp = () => {
       }
       setUnreadCounts(parsedCounts);
 
-      const resLastMsgs = await fetch(`/api/messages/last-messages?username=${encodeURIComponent(username)}`, { headers: authHeaders });
+      const resLastMsgs = await fetch(`/api/messages/last-messages?username=${encodeURIComponent(username || localStorage.getItem('chatUsername'))}`, { headers: getAuthHeaders() });
       if (resLastMsgs.status === 401 || resLastMsgs.status === 403) return handleDisconnect();
 
       let dataLastMsgs = {};
@@ -300,14 +306,11 @@ const ChatApp = () => {
     }
   };
 
-  // Polling for users every 5 seconds (temporary solution to keep online status fresh)
+  // Load initial data on connect
   useEffect(() => {
-    let interval;
     if (isConnected) {
       loadUsers();
-      interval = setInterval(loadUsers, 5000);
     }
-    return () => clearInterval(interval);
   }, [isConnected, username]);
 
   const handleAuth = async (e) => {
@@ -355,6 +358,9 @@ const ChatApp = () => {
   }, []);
 
   const connectWebSocket = (jwtToken, currentUsername) => {
+    if (stompClientRef.current) {
+      stompClientRef.current.deactivate();
+    }
     const socket = new SockJS('/ws');
     const client = new Client({
       webSocketFactory: () => socket,
@@ -364,11 +370,64 @@ const ChatApp = () => {
       },
       onConnect: () => {
         setIsConnected(true);
-        stompClientRef.current = client;
 
         client.publish({
           destination: '/app/chat.addUser',
           body: JSON.stringify({ senderUsername: currentUsername, type: 'JOIN' }),
+        });
+
+        // Subscribe to public topic for user JOIN/LEAVE status updates
+        client.subscribe('/topic/public', (message) => {
+          const parsedMessage = JSON.parse(message.body);
+          if (parsedMessage.type === 'JOIN' || parsedMessage.type === 'LEAVE') {
+            fetchUsersAndUpdateRef(); // refresh user online statuses
+          }
+        });
+
+        // Subscribe to personal topic for incoming messages (to update sidebar)
+        client.subscribe(`/topic/user.${currentUsername}`, async (message) => {
+          const parsedMessage = JSON.parse(message.body);
+          if (parsedMessage.type === 'CHAT') {
+            const senderName = parsedMessage.senderUsername || parsedMessage.sender?.username;
+
+            // If the message is from someone else and NOT the person we are actively chatting with
+            if (senderName !== currentUsername && (!activeChatRef.current || activeChatRef.current.name !== senderName)) {
+              setUnreadCounts(prev => ({
+                ...prev,
+                [senderName]: (prev[senderName] || 0) + 1
+              }));
+            }
+
+            // Determine the "other user" we are chatting with
+            let otherUsername = senderName;
+            if (senderName === currentUsername) {
+              if (activeChatRef.current?.name) {
+                otherUsername = activeChatRef.current.name;
+              } else if (parsedMessage.chatRoom?.participants) {
+                const otherParticipant = parsedMessage.chatRoom.participants.find(p => p.username !== currentUsername);
+                if (otherParticipant) otherUsername = otherParticipant.username;
+              }
+            }
+
+            // Decrypt content for sidebar last message if needed
+            let finalContent = parsedMessage.content;
+            if (finalContent && finalContent.startsWith("E2E:")) {
+              const targetPubKey = await getUserPublicKey(otherUsername);
+              if (targetPubKey) {
+                const sharedKey = await getSharedKey(otherUsername, targetPubKey, sharedKeysCache);
+                if (sharedKey) {
+                  finalContent = await decryptMessageContent(finalContent, sharedKey);
+                }
+              } else {
+                finalContent = "🔒 [Encrypted Message]";
+              }
+            }
+
+            setLastMessages(prev => ({
+              ...prev,
+              [otherUsername]: finalContent
+            }));
+          }
         });
       },
       onStompError: (frame) => {
@@ -377,6 +436,7 @@ const ChatApp = () => {
       },
     });
 
+    stompClientRef.current = client;
     client.activate();
   };
 
@@ -395,7 +455,7 @@ const ChatApp = () => {
 
     if (chat.type === 'private') {
       try {
-        const res = await fetch(`/api/chatrooms/1on1?user1=${encodeURIComponent(username)}&user2=${encodeURIComponent(chat.name)}`, { headers: authHeaders });
+        const res = await fetch(`/api/chatrooms/1on1?user1=${encodeURIComponent(username)}&user2=${encodeURIComponent(chat.name)}`, { headers: getAuthHeaders() });
         const room = await res.json();
         chat.id = room.id; // set the true DB chatRoomId
         setActiveChat({ ...chat, id: room.id });
@@ -408,8 +468,7 @@ const ChatApp = () => {
       }
     }
 
-    // Fetch message history for this room
-    fetch(fetchUrl, { headers: authHeaders })
+    fetch(fetchUrl, { headers: getAuthHeaders() })
       .then((res) => res.json())
       .then(async (data) => {
         // Find their public key

@@ -29,7 +29,13 @@ public class ChatController {
 
     @MessageMapping("/chat.sendMessage")
     public void sendMessage(@Payload ChatMessageRequest request) {
-        User sender = userService.getOrCreateUser(request.getSenderUsername());
+        User sender;
+        try {
+            sender = userService.getUserByUsername(request.getSenderUsername());
+        } catch (Exception e) {
+            log.error("Sender not found for message: {}", request.getSenderUsername());
+            return;
+        }
         ChatRoom chatRoom = null;
         if (request.getChatRoomId() != null) {
             chatRoom = chatRoomRepository.findById(request.getChatRoomId()).orElse(null);
@@ -60,6 +66,11 @@ public class ChatController {
         if (chatRoom != null) {
             // Provide to a specific chat room topic
             messagingTemplate.convertAndSend("/topic/chatrooms/" + chatRoom.getId(), chatMessage);
+            // Notify each participant for their sidebar updates (last message, unread
+            // counts)
+            for (User participant : chatRoom.getParticipants()) {
+                messagingTemplate.convertAndSend("/topic/user." + participant.getUsername(), chatMessage);
+            }
         } else {
             // General public topic
             messagingTemplate.convertAndSend("/topic/public", chatMessage);
@@ -69,7 +80,13 @@ public class ChatController {
     @MessageMapping("/chat.addUser")
     @SendTo("/topic/public")
     public ChatMessage addUser(@Payload ChatMessageRequest request, SimpMessageHeaderAccessor headerAccessor) {
-        User user = userService.getOrCreateUser(request.getSenderUsername());
+        User user;
+        try {
+            user = userService.getUserByUsername(request.getSenderUsername());
+        } catch (Exception e) {
+            log.error("User not found for addUser: {}", request.getSenderUsername());
+            return null;
+        }
         userService.connect(user);
 
         // Add username in web socket session

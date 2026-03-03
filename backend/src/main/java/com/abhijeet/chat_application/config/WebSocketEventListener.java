@@ -30,17 +30,21 @@ public class WebSocketEventListener {
 
         if (username != null) {
             log.info("user disconnected: {}", username);
-            User user = userService.getOrCreateUser(username);
-            userService.disconnect(user);
+            try {
+                User user = userService.getUserByUsername(username);
+                userService.disconnect(user);
 
-            var chatMessage = ChatMessage.builder()
-                    .type(ChatMessage.MessageType.LEAVE)
-                    .sender(user)
-                    .timestamp(LocalDateTime.now())
-                    .build();
+                var chatMessage = ChatMessage.builder()
+                        .type(ChatMessage.MessageType.LEAVE)
+                        .sender(user)
+                        .timestamp(LocalDateTime.now())
+                        .build();
 
-            chatMessageService.save(chatMessage);
-            messagingTemplate.convertAndSend("/topic/public", chatMessage);
+                chatMessageService.save(chatMessage);
+                messagingTemplate.convertAndSend("/topic/public", chatMessage);
+            } catch (Exception e) {
+                log.warn("Disconnected user not found in DB: {}", username);
+            }
         }
     }
 }

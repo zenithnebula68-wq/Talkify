@@ -1,0 +1,29 @@
+# Build output
+target/
+
+# IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitattributes
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Documentation
+HELP.md
+*.md

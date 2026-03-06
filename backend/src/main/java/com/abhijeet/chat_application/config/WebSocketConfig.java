@@ -32,7 +32,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // websocket server
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns("*")
-                .withSockJS();
+                .withSockJS()
+                .setClientLibraryUrl("https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js");
         // Also register a raw WebSocket endpoint (without SockJS)
         registry.addEndpoint("/ws-raw")
                 .setAllowedOriginPatterns("*");

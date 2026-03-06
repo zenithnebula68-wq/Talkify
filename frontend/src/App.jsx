@@ -205,6 +205,7 @@ const ChatApp = () => {
   const stompClientRef = useRef(null);
   const messagesEndRef = useRef(null);
   const currentSubscriptionRef = useRef(null);
+  const openChatRequestIdRef = useRef(0);
   const sharedKeysCache = useRef({});
   const usersRef = useRef([]);
   const activeChatRef = useRef(null);
@@ -443,9 +444,12 @@ const ChatApp = () => {
   };
 
   const openChat = async (chat) => {
+    const requestId = ++openChatRequestIdRef.current;
+
     // Unsubscribe from previous if exists
     if (currentSubscriptionRef.current) {
       currentSubscriptionRef.current.unsubscribe();
+      currentSubscriptionRef.current = null;
     }
 
     setActiveChat(chat);
@@ -506,6 +510,9 @@ const ChatApp = () => {
 
     // Subscribe to the active room
     if (stompClientRef.current && stompClientRef.current.connected) {
+      // Prevent stale subscriptions if the user rapidly clicked different chats
+      if (openChatRequestIdRef.current !== requestId) return;
+
       currentSubscriptionRef.current = stompClientRef.current.subscribe(topic, async (message) => {
         const parsedMessage = JSON.parse(message.body);
 

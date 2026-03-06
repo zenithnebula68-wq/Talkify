@@ -4,6 +4,8 @@ import SockJS from 'sockjs-client';
 import { Send, User as UserIcon, LogOut, Check, CheckCheck, Users } from 'lucide-react';
 import './index.css';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 const initDB = () => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open("chat-db", 1);
@@ -230,7 +232,7 @@ const ChatApp = () => {
 
   const fetchUsersAndUpdateRef = async () => {
     try {
-      const resUsers = await fetch('/api/users', { headers: getAuthHeaders() });
+      const resUsers = await fetch(`${API_BASE_URL}/api/users`, { headers: getAuthHeaders() });
       if (resUsers.status === 401 || resUsers.status === 403) {
         handleDisconnect();
         throw new Error("Unauthorized");
@@ -263,7 +265,7 @@ const ChatApp = () => {
       const newUsers = await fetchUsersAndUpdateRef();
       if (!newUsers || newUsers.length === 0 && !isConnected) return; // Disconnected or failed
 
-      const resCounts = await fetch(`/api/messages/unread-counts?username=${encodeURIComponent(username || localStorage.getItem('chatUsername'))}`, { headers: getAuthHeaders() });
+      const resCounts = await fetch(`${API_BASE_URL}/api/messages/unread-counts?username=${encodeURIComponent(username || localStorage.getItem('chatUsername'))}`, { headers: getAuthHeaders() });
       if (resCounts.status === 401 || resCounts.status === 403) return handleDisconnect();
 
       let parsedCounts = {};
@@ -272,7 +274,7 @@ const ChatApp = () => {
       }
       setUnreadCounts(parsedCounts);
 
-      const resLastMsgs = await fetch(`/api/messages/last-messages?username=${encodeURIComponent(username || localStorage.getItem('chatUsername'))}`, { headers: getAuthHeaders() });
+      const resLastMsgs = await fetch(`${API_BASE_URL}/api/messages/last-messages?username=${encodeURIComponent(username || localStorage.getItem('chatUsername'))}`, { headers: getAuthHeaders() });
       if (resLastMsgs.status === 401 || resLastMsgs.status === 403) return handleDisconnect();
 
       let dataLastMsgs = {};
@@ -323,7 +325,7 @@ const ChatApp = () => {
       publicKeyStr = await generateAndSaveKeyPair();
     }
 
-    const endpoint = isLoginMode ? '/api/auth/login' : '/api/auth/register';
+    const endpoint = isLoginMode ? `${API_BASE_URL}/api/auth/login` : `${API_BASE_URL}/api/auth/register`;
 
     try {
       const response = await fetch(endpoint, {
@@ -361,7 +363,7 @@ const ChatApp = () => {
     if (stompClientRef.current) {
       stompClientRef.current.deactivate();
     }
-    const socket = new SockJS('/ws');
+    const socket = new SockJS(`${API_BASE_URL}/ws`);
     const client = new Client({
       webSocketFactory: () => socket,
       reconnectDelay: 5000,
@@ -455,13 +457,13 @@ const ChatApp = () => {
 
     if (chat.type === 'private') {
       try {
-        const res = await fetch(`/api/chatrooms/1on1?user1=${encodeURIComponent(username)}&user2=${encodeURIComponent(chat.name)}`, { headers: getAuthHeaders() });
+        const res = await fetch(`${API_BASE_URL}/api/chatrooms/1on1?user1=${encodeURIComponent(username)}&user2=${encodeURIComponent(chat.name)}`, { headers: getAuthHeaders() });
         const room = await res.json();
         chat.id = room.id; // set the true DB chatRoomId
         setActiveChat({ ...chat, id: room.id });
 
         topic = `/topic/chatrooms/${room.id}`;
-        fetchUrl = `/api/messages?chatRoomId=${room.id}`;
+        fetchUrl = `${API_BASE_URL}/api/messages?chatRoomId=${room.id}`;
       } catch (err) {
         console.error("Failed to establish 1 on 1 room", err);
         return;

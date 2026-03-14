@@ -4,6 +4,7 @@ import com.abhijeet.chat_application.entity.ChatRoom;
 import com.abhijeet.chat_application.entity.User;
 import com.abhijeet.chat_application.exception.BadRequestException;
 import com.abhijeet.chat_application.repository.ChatRoomRepository;
+import com.abhijeet.chat_application.service.FriendshipService;
 import com.abhijeet.chat_application.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +20,7 @@ public class ChatRoomController {
 
     private final ChatRoomRepository chatRoomRepository;
     private final UserService userService;
+    private final FriendshipService friendshipService;
 
     @GetMapping("/1on1")
     public ResponseEntity<ChatRoom> getOrCreate1on1Room(@RequestParam String user1, @RequestParam String user2) {
@@ -29,6 +31,11 @@ public class ChatRoomController {
         // userService.getUserByUsername already throws ResourceNotFoundException
         User u1 = userService.getUserByUsername(user1);
         User u2 = userService.getUserByUsername(user2);
+
+        // Enforce friendship check
+        if (!friendshipService.areFriends(user1, user2)) {
+            throw new BadRequestException("You can only chat with friends");
+        }
 
         // Find existing 1on1 room
         List<ChatRoom> roomsWithU1 = chatRoomRepository.findByParticipantsContaining(u1);

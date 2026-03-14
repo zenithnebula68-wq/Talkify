@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { Send, User as UserIcon, LogOut, Check, CheckCheck, Users } from 'lucide-react';
+import { Send, User as UserIcon, LogOut, Check, CheckCheck, Users, UserPlus, Bell, ArrowLeft } from 'lucide-react';
 import './index.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
@@ -193,6 +193,10 @@ const ChatApp = () => {
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [users, setUsers] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [sentRequests, setSentRequests] = useState([]);
+  const [activeTab, setActiveTab] = useState('friends');
   const [unreadCounts, setUnreadCounts] = useState({});
   const [lastMessages, setLastMessages] = useState({});
   const [password, setPassword] = useState('');
@@ -261,10 +265,29 @@ const ChatApp = () => {
     return user ? user.publicKey : null;
   };
 
+  const fetchFriendsData = async () => {
+    const currentUser = username || localStorage.getItem('chatUsername');
+    if (!currentUser) return;
+    try {
+      const headers = getAuthHeaders();
+      const [fRes, pRes, sRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/friends?username=${encodeURIComponent(currentUser)}`, { headers }),
+        fetch(`${API_BASE_URL}/api/friends/pending?username=${encodeURIComponent(currentUser)}`, { headers }),
+        fetch(`${API_BASE_URL}/api/friends/sent?username=${encodeURIComponent(currentUser)}`, { headers }),
+      ]);
+      if (fRes.ok) setFriends(await fRes.json());
+      if (pRes.ok) setPendingRequests(await pRes.json());
+      if (sRes.ok) setSentRequests(await sRes.json());
+    } catch (e) {
+      console.error("Error fetching friends data", e);
+    }
+  };
+
   const loadUsers = async () => {
     try {
       const newUsers = await fetchUsersAndUpdateRef();
       if (!newUsers || newUsers.length === 0 && !isConnected) return; // Disconnected or failed
+      await fetchFriendsData();
 
       const resCounts = await fetch(`${API_BASE_URL}/api/messages/unread-counts?username=${encodeURIComponent(username || localStorage.getItem('chatUsername'))}`, { headers: getAuthHeaders() });
       if (resCounts.status === 401 || resCounts.status === 403) return handleDisconnect();
@@ -315,6 +338,36 @@ const ChatApp = () => {
       loadUsers();
     }
   }, [isConnected, username]);
+
+  const handleSendRequest = async (toUsername) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/friends/request?from=${encodeURIComponent(username)}&to=${encodeURIComponent(toUsername)}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) fetchFriendsData();
+    } catch (e) { console.error(e); }
+  };
+
+  const handleAcceptRequest = async (friendshipId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/friends/accept?friendshipId=${friendshipId}&username=${encodeURIComponent(username)}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) fetchFriendsData();
+    } catch (e) { console.error(e); }
+  };
+
+  const handleRejectRequest = async (friendshipId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/friends/reject?friendshipId=${friendshipId}&username=${encodeURIComponent(username)}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      if (res.ok) fetchFriendsData();
+    } catch (e) { console.error(e); }
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -721,7 +774,7 @@ const ChatApp = () => {
   return (
     <div className="flex h-screen w-full bg-[#efeae2] font-sans">
       {/* Sidebar */}
-      <div className="w-1/3 bg-white border-r border-gray-200 flex flex-col hidden md:flex">
+      <div className={`w-full md:w-1/3 bg-white border-r border-gray-200 flex-col ${activeChat ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
         <div className="bg-[#f0f2f5] p-3 flex justify-between items-center border-b border-gray-200">
           <div className="flex items-center space-x-3">
@@ -736,40 +789,143 @@ const ChatApp = () => {
         </div>
 
         {/* Contacts/Chats List */}
+        {/* Contacts/Chats List */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-3 bg-white text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100">
-            Select a User to Chat
+          <div className="p-3 bg-white text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-100 flex justify-between items-center">
+            <span>Chats</span>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setActiveTab('friends')}
+                className={`p-1.5 rounded-md transition-colors ${activeTab === 'friends' ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                title="Friends"
+              >
+                <Users size={18} />
+              </button>
+              <button
+                onClick={() => setActiveTab('add')}
+                className={`p-1.5 rounded-md transition-colors ${activeTab === 'add' ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                title="Add Friend"
+              >
+                <UserPlus size={18} />
+              </button>
+              <button
+                onClick={() => setActiveTab('requests')}
+                className={`p-1.5 rounded-md relative transition-colors ${activeTab === 'requests' ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
+                title="Pending Requests"
+              >
+                <Bell size={18} />
+                {pendingRequests.length > 0 && (
+                  <span className="absolute top-1 right-1 block w-2 h-2 rounded-full bg-red-500 ring-2 ring-white"></span>
+                )}
+              </button>
+            </div>
           </div>
 
-          {users.map(u => (
-            <div
-              key={u.id}
-              onClick={() => openChat({ type: 'private', id: null, name: u.username })}
-              className={`p-3 border-b border-gray-100 flex items-center space-x-4 cursor-pointer hover:bg-[#f5f6f6] ${activeChat?.name === u.username ? 'bg-[#ebebeb]' : ''}`}
-            >
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${getAvatarColor(u.username)}`}>
-                {getInitials(u.username)}
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <div className="flex justify-between items-center mb-0.5">
-                  <h3 className="text-[17px] font-normal text-gray-900 truncate pr-2">{u.username}</h3>
-                  {unreadCounts[u.username] > 0 && (
-                    <div className="w-[22px] h-[22px] bg-green-500 rounded-full flex justify-center items-center text-white text-[11.5px] font-bold flex-shrink-0">
-                      {unreadCounts[u.username]}
-                    </div>
-                  )}
+          {activeTab === 'friends' && (
+            friends.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Users className="text-gray-400" size={24} />
                 </div>
-                <p className={`text-sm whitespace-nowrap overflow-hidden text-ellipsis ${unreadCounts[u.username] > 0 ? 'text-green-600 font-medium' : 'text-gray-500'}`}>
-                  {lastMessages[u.username] || 'Say hi...'}
-                </p>
+                <p className="text-sm text-gray-500">No friends yet.<br />Click the + icon to add some!</p>
               </div>
+            ) : (
+              friends.map(u => (
+                <div
+                  key={u.id}
+                  onClick={() => openChat({ type: 'private', id: null, name: u.username })}
+                  className={`p-3 border-b border-gray-100 flex items-center space-x-4 cursor-pointer hover:bg-[#f5f6f6] ${activeChat?.name === u.username ? 'bg-[#ebebeb]' : ''}`}
+                >
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${getAvatarColor(u.username)}`}>
+                    {getInitials(u.username)}
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <h3 className="text-[17px] font-normal text-gray-900 truncate pr-2">{u.username}</h3>
+                      {unreadCounts[u.username] > 0 && (
+                        <div className="w-[22px] h-[22px] bg-green-500 rounded-full flex justify-center items-center text-white text-[11.5px] font-bold flex-shrink-0">
+                          {unreadCounts[u.username]}
+                        </div>
+                      )}
+                    </div>
+                    <p className={`text-sm whitespace-nowrap overflow-hidden text-ellipsis ${unreadCounts[u.username] > 0 ? 'text-green-600 font-medium' : 'text-gray-500'}`}>
+                      {lastMessages[u.username] || 'Say hi...'}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )
+          )}
+
+          {activeTab === 'add' && (
+            <div className="p-2">
+              {users.filter(u => !friends.find(f => f.username === u.username)).length === 0 ? (
+                <div className="p-4 text-center text-sm text-gray-500">No new users to add.</div>
+              ) : (
+                users.filter(u => !friends.find(f => f.username === u.username)).map(u => {
+                  const hasSent = sentRequests.find(r => r.addressee.username === u.username);
+                  const hasReceived = pendingRequests.find(r => r.requester.username === u.username);
+
+                  return (
+                    <div key={u.id} className="p-2 border-b border-gray-100 flex items-center justify-between hover:bg-[#f5f6f6] rounded-lg transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${getAvatarColor(u.username)}`}>
+                          {getInitials(u.username)}
+                        </div>
+                        <span className="font-medium text-gray-800">{u.username}</span>
+                      </div>
+                      {hasSent ? (
+                        <span className="text-xs text-gray-500 font-medium px-3 py-1.5 bg-gray-100 rounded-md border border-gray-200">Pending</span>
+                      ) : hasReceived ? (
+                        <button onClick={() => setActiveTab('requests')} className="text-xs text-green-700 font-medium px-3 py-1.5 bg-green-100 hover:bg-green-200 rounded-md transition-colors">
+                          Review
+                        </button>
+                      ) : (
+                        <button onClick={() => handleSendRequest(u.username)} className="text-xs text-white font-medium px-3 py-1.5 bg-green-500 hover:bg-green-600 rounded-md shadow-sm transition-colors">
+                          Add Friend
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
-          ))}
+          )}
+
+          {activeTab === 'requests' && (
+            <div className="p-2">
+              {pendingRequests.length === 0 ? (
+                <div className="p-4 text-center text-sm text-gray-500">No pending requests.</div>
+              ) : (
+                pendingRequests.map(r => (
+                  <div key={r.id} className="p-3 border border-gray-200 bg-white rounded-xl shadow-sm mb-3 flex flex-col space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${getAvatarColor(r.requester.username)}`}>
+                        {getInitials(r.requester.username)}
+                      </div>
+                      <div className="flex-1">
+                        <span className="font-semibold text-gray-800 text-sm">{r.requester.username}</span>
+                        <p className="text-[13px] text-gray-500">sent you a friend request</p>
+                      </div>
+                    </div>
+                    <div className="flex space-x-2 pt-1 border-t border-gray-100">
+                      <button onClick={() => handleAcceptRequest(r.id)} className="flex-1 text-sm text-white font-medium py-1.5 bg-green-500 hover:bg-green-600 rounded-lg shadow-sm transition-colors">
+                        Accept
+                      </button>
+                      <button onClick={() => handleRejectRequest(r.id)} className="flex-1 text-sm text-gray-700 font-medium py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col w-full md:w-2/3 bg-[url('https://whatsapp-clone-web.netlify.app/bg-chat-tile-dark_a4be512e7195b6b733d9110b408f075d.png')] bg-repeat">
+      <div className={`flex-1 flex flex-col w-full md:w-2/3 bg-[url('https://whatsapp-clone-web.netlify.app/bg-chat-tile-dark_a4be512e7195b6b733d9110b408f075d.png')] bg-repeat ${activeChat ? 'flex' : 'hidden md:flex'}`}>
         {!activeChat ? (
           <div className="flex-1 flex flex-col items-center justify-center bg-[#f0f2f5] border-b-[6px] border-green-500">
             <h1 className="text-3xl font-light text-gray-700 mb-4 mt-8">Talkify</h1>
@@ -781,8 +937,15 @@ const ChatApp = () => {
         ) : (
           <>
             {/* Chat Header */}
-            <div className="bg-[#f0f2f5] p-3 flex items-center space-x-4 border-b border-gray-200 sticky top-0 z-10">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg ${getAvatarColor(activeChat.name)}`}>
+            <div className="bg-[#f0f2f5] p-3 flex items-center space-x-4 border-b border-gray-200 sticky top-0 z-10 w-full">
+              <button
+                onClick={() => setActiveChat(null)}
+                className="md:hidden text-gray-600 hover:text-green-500 transition-colors"
+                title="Back to Contacts"
+              >
+                <ArrowLeft size={24} />
+              </button>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0 ${getAvatarColor(activeChat.name)}`}>
                 {getInitials(activeChat.name)}
               </div>
               <div>

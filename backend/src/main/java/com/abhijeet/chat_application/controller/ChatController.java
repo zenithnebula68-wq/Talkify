@@ -6,6 +6,7 @@ import com.abhijeet.chat_application.entity.User;
 import com.abhijeet.chat_application.exception.ResourceNotFoundException;
 import com.abhijeet.chat_application.repository.ChatRoomRepository;
 import com.abhijeet.chat_application.service.ChatMessageService;
+import com.abhijeet.chat_application.service.FriendshipService;
 import com.abhijeet.chat_application.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class ChatController {
     private final SimpMessageSendingOperations messagingTemplate;
     private final UserService userService;
     private final ChatRoomRepository chatRoomRepository;
+    private final FriendshipService friendshipService;
 
     @Transactional
     @MessageMapping("/chat.sendMessage")
@@ -43,6 +45,19 @@ public class ChatController {
         ChatRoom chatRoom = null;
         if (request.getChatRoomId() != null) {
             chatRoom = chatRoomRepository.findById(request.getChatRoomId()).orElse(null);
+        }
+
+        // Enforce friendship check for 1-on-1 chats
+        if (chatRoom != null && !chatRoom.isGroupChat()) {
+            for (User participant : chatRoom.getParticipants()) {
+                if (!participant.getUsername().equals(sender.getUsername())) {
+                    if (!friendshipService.areFriends(sender.getUsername(), participant.getUsername())) {
+                        log.warn("Message blocked: {} is not friends with {}", sender.getUsername(),
+                                participant.getUsername());
+                        return;
+                    }
+                }
+            }
         }
 
         ChatMessage.MessageStatus initialStatus = ChatMessage.MessageStatus.SENT;
